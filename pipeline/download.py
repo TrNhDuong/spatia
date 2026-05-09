@@ -103,13 +103,12 @@ def _download_one(
 
     # Đảm bảo clip đủ dài để preprocess lấy đủ frames
     duration_sec = max(end_sec - start_sec, MIN_CLIP_SEC)
+    real_end_sec = start_sec + duration_sec
 
-    # yt-dlp format: ưu tiên mp4, fallback sang bất kỳ
+    # yt-dlp format: ưu tiên progressive mp4 để ffmpeg tải section không bị treo (YouTube chống bot)
     fmt = (
-        f"bestvideo[height<={height}][ext=mp4]"
-        f"+bestaudio[ext=m4a]"
-        f"/bestvideo[height<={height}]"
-        f"/best[height<={height}]"
+        f"best[height<={height}][ext=mp4]"
+        f"/best[ext=mp4]"
         f"/best"
     )
 
@@ -119,10 +118,7 @@ def _download_one(
         "--no-warnings",
         "--no-playlist",
         "-f", fmt,
-        "--merge-output-format", "mp4",
-        "--external-downloader", "ffmpeg",
-        "--external-downloader-args",
-        f"ffmpeg_i:-ss {start_sec:.3f} -t {duration_sec:.3f}",
+        "--download-sections", f"*{start_sec:.3f}-{real_end_sec:.3f}",
         "--postprocessor-args",
         "ffmpeg:-c:v libx264 -c:a aac",  # đảm bảo codec tương thích
         "-o", str(out),
@@ -225,11 +221,11 @@ def download_videos(
             with lock:
                 if vp:
                     results.append((vp, tp))
-                    status = "✓"
+                    status = "[OK]"
                 else:
                     reason = err or "download failed"
                     failed.append(f"{tp.name}\t{reason}")
-                    status = "✗"
+                    status = "[FAIL]"
 
             # Progress line
             pct = done_count / len(txts) * 100
