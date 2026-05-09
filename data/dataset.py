@@ -90,15 +90,25 @@ class SpatiaDataset(Dataset):
         if not self.is_real:
             return self._dummy_item()
 
-        data = torch.load(self.real_files[idx], map_location="cpu",
-                          weights_only=True)
+        try:
+            data = torch.load(self.real_files[idx], map_location="cpu",
+                              weights_only=True)
+        except TypeError:
+            # Fallback for PyTorch < 2.0 which doesn't support weights_only
+            data = torch.load(self.real_files[idx], map_location="cpu")
 
         # Ensure consistent shapes (in case pre-processing used different cfg)
+        text_loaded = data["text"]
+        assert text_loaded.shape[-1] == self.cfg.text_dim, (
+            f"text_dim mismatch: file has {text_loaded.shape[-1]}, "
+            f"config expects {self.cfg.text_dim}. "
+            f"Ensure T5 model matches cfg.text_dim."
+        )
         return {
             "x_T":   self._pad_or_crop(data["x_T"],   self.N_T),
             "x_P":   self._pad_or_crop(data["x_P"],   self.N_P),
             "x_R":   self._pad_or_crop(data["x_R"],   self.N_R),
             "x_S_T": self._pad_or_crop(data["x_S_T"], self.N_T),
             "x_S_P": self._pad_or_crop(data["x_S_P"], self.N_P),
-            "text":  self._pad_or_crop(data["text"],   self.N_txt),
+            "text":  self._pad_or_crop(text_loaded,    self.N_txt),
         }

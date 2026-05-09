@@ -11,3 +11,13 @@ accelerate>=0.29.0
 
 # Cho download script (scripts/download_realestate.py)
 yt-dlp>=2024.1.0
+
+# ── Packages bổ sung (từ code review) ────────────────────────────────────
+# [Critical] T5Tokenizer cần sentencepiece để tokenize text
+sentencepiece>=0.1.99
+# [High] Một số diffusers/transformers components cần scipy
+scipy>=1.11.0
+# [Medium] Progress bar khi preprocess
+tqdm>=4.66.0
+# [Optional] Hữu ích cho image/video ops
+torchvision>=0.16.0

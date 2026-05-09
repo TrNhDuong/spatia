@@ -7,14 +7,17 @@ Encoder wrappers:
   - helpers  : scene_projection, retrieve_refs, flatten_latent
 """
 
+import logging
 import torch
 import torch.nn.functional as F
 import numpy as np
 from pathlib import Path
 from configs.config import SpatiaConfig
 
+log = logging.getLogger(__name__)
 
-# ── Wan2.2 VAE ────────────────────────────────────────────────────────────
+
+# ── Wan2.2 VAE ───────────────────────────────────────────────────────────────────────
 class WanVAE:
     """
     Wraps Wan2.2 VAE từ diffusers.
@@ -59,7 +62,7 @@ class WanVAE:
         return out.cpu().float()
 
 
-# ── T5 Encoder ────────────────────────────────────────────────────────────
+# ── T5 Encoder ───────────────────────────────────────────────────────────────────────
 class T5Encoder:
     """
     Wraps T5 text encoder từ HuggingFace transformers.
@@ -99,40 +102,47 @@ class T5Encoder:
         return out.last_hidden_state.squeeze(0).cpu().float()
 
 
-# ── Frame extraction ──────────────────────────────────────────────────────
+# ── Frame extraction ─────────────────────────────────────────────────────────────────────
 def extract_frames(video_path: str, num_frames: int,
                    height: int, width: int) -> torch.Tensor:
     """
     Trích num_frames frame đều nhau từ video.
     Returns [num_frames, 3, H, W] in [-1, 1].
-    Fallback: random tensor nếu opencv chưa cài.
+
+    Raises RuntimeError nếu không đọc được video — không silent-catch.
+    Cần import cv2 (opencv-python).
     """
-    try:
-        import cv2
-        cap   = cv2.VideoCapture(video_path)
-        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        if total < 2:
-            cap.release()
-            raise ValueError("Video quá ngắn")
+    import cv2  # bắt buộc phải có; ImportError sẽ propagate rõ ràng
 
-        indices = [int(i) for i in
-                   torch.linspace(0, total - 1, num_frames).tolist()]
-        frames  = []
-        for idx in indices:
-            cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
-            ret, frame = cap.read()
-            if not ret:
-                frame = np.zeros((height, width, 3), dtype=np.uint8)
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame = cv2.resize(frame, (width, height))
-            frames.append(frame)
+    cap   = cv2.VideoCapture(video_path)
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    if total < 2:
         cap.release()
+        raise RuntimeError(
+            f"Video '{video_path}' quá ngắn ({total} frames). "
+            "Đảm bảo video đã được validate bằng preprocess_one trước khi gọi hàm này."
+        )
 
-        arr = torch.from_numpy(np.stack(frames)).float() / 127.5 - 1.0
-        return arr.permute(0, 3, 1, 2)   # [T, 3, H, W]
+    indices = [int(i) for i in
+               torch.linspace(0, total - 1, num_frames).tolist()]
+    frames  = []
+    for idx in indices:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
+        ret, frame = cap.read()
+        if not ret:
+            cap.release()
+            raise RuntimeError(
+                f"Không đọc được frame {idx} từ '{video_path}'. "
+                "Video có thể bị hỏng hoặc bị cắt giữa chừng."
+            )
+        frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        frame = cv2.resize(frame, (width, height))
+        frames.append(frame)
+    cap.release()
 
-    except Exception:
-        return torch.randn(num_frames, 3, height, width)
+    arr = torch.from_numpy(np.stack(frames)).float() / 127.5 - 1.0
+    return arr.permute(0, 3, 1, 2)   # [T, 3, H, W]
 
 
 # ── Scene projection (MapAnything placeholder) ────────────────────────────

@@ -133,25 +133,31 @@ class SpatiaNetworkBlock(nn.Module):
     def forward(self, x_tokens: torch.Tensor,
                 scene_tokens: torch.Tensor,
                 text_tokens: torch.Tensor,
-                n_R: int, n_P: int):
+                n_R: int, n_P: int, n_T: int):
         """
         Args:
             x_tokens    : [B, N_R+N_P+N_T, D]  concat(X_R, X_P, x_t)
-            scene_tokens: [B, N_P+N_T,     D]  concat(X_S_P, X_S_T)
+            scene_tokens: [B, N_S_P+N_S_T, D]  concat(X_S_P, X_S_T)
+                          where N_S_P == n_P and N_S_T == n_T
             text_tokens : [B, N_txt, text_dim]
-            n_R, n_P    : token counts for reference / preceding parts
+            n_R, n_P, n_T : token counts for reference / preceding / target parts
         """
         scene_out, projected = self.controlnet(scene_tokens, text_tokens)
 
-        # Split projected into preceding (S_P) and target (S_T) parts
-        n_s = scene_tokens.shape[1] // 2
-        cond_P = projected[:, :n_s, :]   # X'_{S_P}
-        cond_T = projected[:, n_s:, :]   # X'_{S_T}
+        # Split projected into preceding (S_P) and target (S_T) parts.
+        # N_S_P == n_P (preceding token count) and N_S_T == n_T (target token count).
+        # We must NOT use scene_tokens.shape[1] // 2 because N_P != N_T in general
+        # (e.g. preceding_frames=9 → N_P=2400, target_frames=81 → N_T=24000).
+        n_s_P = n_P   # scene_P token count equals x_P token count
+        n_s_T = n_T   # scene_T token count equals x_T token count
+        cond_P = projected[:, :n_s_P, :]        # X'_{S_P}  [B, n_P, D]
+        cond_T = projected[:, n_s_P:n_s_P + n_s_T, :]  # X'_{S_T}  [B, n_T, D]
 
-        # Build additive conditioning tensor aligned with x_tokens layout
+        # Build additive conditioning tensor aligned with x_tokens layout:
+        #   [X_R | X_P | x_t]   lengths: [n_R | n_P | n_T]
         cond = torch.zeros_like(x_tokens)
-        cond[:, n_R:n_R + n_s, :]         += cond_P   # inject into x_P slice
-        cond[:, n_R + n_P:n_R + n_P + n_s, :] += cond_T  # inject into x_t slice
+        cond[:, n_R:n_R + n_s_P, :]              += cond_P   # inject into x_P slice
+        cond[:, n_R + n_P:n_R + n_P + n_s_T, :] += cond_T   # inject into x_t slice
 
         for i, block in enumerate(self.main_blocks):
             scene_c = cond if i == 0 else None

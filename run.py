@@ -49,6 +49,10 @@ def parse_args():
     p.add_argument("--t5_name",    default="google/t5-v1_1-xxl")
     p.add_argument("--height",     type=int, default=480)
     p.add_argument("--width",      type=int, default=640)
+    p.add_argument("--workers",     type=int, default=4,
+                   help="Số luồng download song song (default: 4)")
+    p.add_argument("--max_retries", type=int, default=3,
+                   help="Số lần retry mỗi video khi lỗi (default: 3)")
     p.add_argument("--skip_download",   action="store_true")
     p.add_argument("--skip_preprocess", action="store_true")
     return p.parse_args()
@@ -62,13 +66,15 @@ def run_training(proc_dir: Path, cfg: SpatiaConfig, device_str: str):
 
     # Dataset
     dataset    = SpatiaDataset(cfg, processed_dir=str(proc_dir))
+    num_workers = min(4, os.cpu_count() or 1)
     dataloader = DataLoader(
         dataset,
         batch_size=cfg.batch_size,
         shuffle=True,
-        num_workers=min(4, os.cpu_count() or 1),
+        num_workers=num_workers,
         pin_memory=(device.type == "cuda"),
-        persistent_workers=True,
+        # persistent_workers requires num_workers > 0 (crashes on Windows otherwise)
+        persistent_workers=(num_workers > 0),
     )
     n_batches = len(dataloader)
     print(f"\n[Train] {len(dataset)} samples | {n_batches} batches/epoch")
@@ -78,9 +84,15 @@ def run_training(proc_dir: Path, cfg: SpatiaConfig, device_str: str):
     n_param = sum(p.numel() for p in model.parameters()) / 1e6
     print(f"[Train] Model: {n_param:.1f} M params")
 
-    # Điều chỉnh iters cho phù hợp với dataset nhỏ
+    # Cap iterations to dataset size; warn if dataset is smaller than planned
     s1 = min(cfg.stage1_iters, n_batches)
     s2 = min(cfg.stage2_iters, n_batches)
+    if s1 < cfg.stage1_iters:
+        print(f"[Train] WARNING: dataset too small — Stage 1 capped to {s1} iters "
+              f"(config wanted {cfg.stage1_iters})")
+    if s2 < cfg.stage2_iters:
+        print(f"[Train] WARNING: dataset too small — Stage 2 capped to {s2} iters "
+              f"(config wanted {cfg.stage2_iters})")
 
     # ── Stage 1: ControlNet only ──────────────────────────────────────
     print("\n" + "─" * 52)
@@ -94,11 +106,10 @@ def run_training(proc_dir: Path, cfg: SpatiaConfig, device_str: str):
         lr=cfg.lr_controlnet, weight_decay=cfg.weight_decay,
     )
     sch1 = torch.optim.lr_scheduler.CosineAnnealingLR(
-        opt1, T_max=s1, eta_min=cfg.lr_controlnet * 0.1)
+        opt1, T_max=max(s1, 1), eta_min=cfg.lr_controlnet * 0.1)
 
-    loss1 = train_one_epoch(model, dataloader, opt1, cfg,
+    loss1 = train_one_epoch(model, dataloader, opt1, sch1, cfg,
                              device, stage=1, max_iters=s1)
-    sch1.step()
     save_checkpoint(model, opt1, 1, loss1, cfg.save_dir, "spatia_stage1")
 
     # ── Stage 2: LoRA fine-tune main blocks ───────────────────────────
@@ -117,11 +128,10 @@ def run_training(proc_dir: Path, cfg: SpatiaConfig, device_str: str):
         lr=cfg.lr_lora, weight_decay=cfg.weight_decay,
     )
     sch2 = torch.optim.lr_scheduler.CosineAnnealingLR(
-        opt2, T_max=s2, eta_min=cfg.lr_lora * 0.1)
+        opt2, T_max=max(s2, 1), eta_min=cfg.lr_lora * 0.1)
 
-    loss2 = train_one_epoch(model, dataloader, opt2, cfg,
+    loss2 = train_one_epoch(model, dataloader, opt2, sch2, cfg,
                              device, stage=2, max_iters=s2)
-    sch2.step()
     save_checkpoint(model, opt2, 2, loss2, cfg.save_dir, "spatia_final")
 
     print(f"\n✓ 1 epoch complete!")
@@ -151,6 +161,8 @@ def main():
     print("  Spatia — Test Set Training (1 epoch)")
     print("=" * 52)
     print(f"  Videos     : {args.max_videos}")
+    print(f"  Workers    : {args.workers}")
+    print(f"  Max retries: {args.max_retries}")
     print(f"  Device     : {args.device}")
     print(f"  Batch size : {args.batch_size}")
     print(f"  Proc dir   : {proc_dir}")
@@ -161,8 +173,13 @@ def main():
     if not args.skip_download:
         meta_dir   = download_metadata(raw_dir)
         video_dir  = raw_dir / "videos"
-        video_list = download_videos(meta_dir, video_dir,
-                                     args.max_videos, args.height)
+        video_list = download_videos(
+            meta_dir, video_dir,
+            max_videos=args.max_videos,
+            height=args.height,
+            workers=args.workers,
+            max_retries=args.max_retries,
+        )
     else:
         print("[Step 1-2] Skipped.")
         video_dir = raw_dir / "videos"

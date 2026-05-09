@@ -2,6 +2,10 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
+try:
+    from torch.optim.lr_scheduler import LRScheduler   # PyTorch >= 2.4 (public)
+except ImportError:
+    from torch.optim.lr_scheduler import _LRScheduler as LRScheduler  # PyTorch < 2.4
 from configs.config import SpatiaConfig
 from .loss import flow_matching_loss
 
@@ -10,6 +14,7 @@ def train_one_epoch(
     model: nn.Module,
     dataloader: DataLoader,
     optimizer: AdamW,
+    scheduler: LRScheduler,
     cfg: SpatiaConfig,
     device: torch.device,
     stage: int,
@@ -22,6 +27,7 @@ def train_one_epoch(
         model       : Spatia model
         dataloader  : training DataLoader
         optimizer   : AdamW optimizer (already configured for current stage)
+        scheduler   : LR scheduler — stepped once per optimizer step
         cfg         : SpatiaConfig
         device      : torch device
         stage       : 1 (ControlNet) or 2 (LoRA)
@@ -48,12 +54,14 @@ def train_one_epoch(
             cfg.grad_clip,
         )
         optimizer.step()
+        scheduler.step()   # per-step: CosineAnnealingLR expects this
 
         total_loss += loss.item()
         num_steps  += 1
 
         if step % cfg.log_every == 0:
-            print(f"  [Stage {stage}] step {step:5d} | loss = {loss.item():.6f}")
+            lr = scheduler.get_last_lr()[0]
+            print(f"  [Stage {stage}] step {step:5d} | loss = {loss.item():.6f} | lr = {lr:.2e}")
 
     avg_loss = total_loss / max(num_steps, 1)
     print(f"  [Stage {stage}] epoch avg loss = {avg_loss:.6f}  ({num_steps} steps)")

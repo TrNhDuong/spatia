@@ -82,9 +82,26 @@ class Spatia(nn.Module):
                 p.requires_grad_(False)
 
     def unfreeze_main_blocks(self):
+        """
+        Stage 2: enable gradients on main block params.
+        If LoRA is enabled, only unfreezes lora_A / lora_B adapters;
+        the frozen base linear weight (LoRALinear.linear) is left as-is.
+        """
+        from .lora import LoRALinear
         for net_block in self.blocks:
-            for p in net_block.main_blocks.parameters():
-                p.requires_grad_(True)
+            for name, module in net_block.main_blocks.named_modules():
+                if isinstance(module, LoRALinear):
+                    # Only adapter weights — base weight stays frozen
+                    module.lora_A.weight.requires_grad_(True)
+                    module.lora_B.weight.requires_grad_(True)
+                    # linear.weight stays requires_grad=False (frozen)
+                elif isinstance(module, torch.nn.Linear):
+                    module.weight.requires_grad_(True)
+                    if module.bias is not None:
+                        module.bias.requires_grad_(True)
+                elif isinstance(module, torch.nn.LayerNorm):
+                    for p in module.parameters():
+                        p.requires_grad_(True)
 
     # ──────────────────────────────────────────────
     # Forward
@@ -120,7 +137,7 @@ class Spatia(nn.Module):
 
         for block in self.blocks:
             x_tokens, scene_tokens = block(
-                x_tokens, scene_tokens, text_tokens, n_R, n_P
+                x_tokens, scene_tokens, text_tokens, n_R, n_P, n_T
             )
 
         # Extract only the target part (last N_T tokens)

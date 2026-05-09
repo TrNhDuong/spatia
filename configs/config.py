@@ -26,8 +26,9 @@ class SpatiaConfig:
     aug_t_max: float = 50.0 / 1000  # t_aug ∈ [0, 50] normalized to [0, 1]
 
     # ── Video / Latent dims ────────────────────────────
-    target_frames: int = 81     # frames for first (image-conditioned) iteration
-    preceding_frames: int = 9   # frames used as preceding context
+    target_frames: int = 81     # 1st iteration: 81 frames (paper Table impl. details)
+    preceding_frames: int = 9   # 9 preceding frames (paper: "conditioned on 9 prev. frames")
+                                 # Note: 9//4=2 temporal latent slices (intentional floor div)
     height: int = 480
     width: int = 640
     spatial_downsample: int = 16
