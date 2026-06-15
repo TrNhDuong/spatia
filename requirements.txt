@@ -21,3 +21,8 @@ scipy>=1.11.0
 tqdm>=4.66.0
 # [Optional] Hữu ích cho image/video ops
 torchvision>=0.16.0
+
+# Metrics theo paper (PSNR / SSIM / LPIPS)
+scikit-image>=0.22.0
+lpips>=0.1.4
+pandas>=2.0.0

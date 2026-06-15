@@ -83,13 +83,15 @@ class T5Encoder:
             self.model.eval()
             print(f"[Encode] T5 loaded from '{model_name}'")
         except Exception as e:
+            self.tokenizer = None
+            self.model = None
             print(f"[Encode][WARN] Could not load T5: {e}")
             print("         → Falling back to random text tokens (for testing).")
 
     @torch.no_grad()
     def encode(self, caption: str, text_dim: int) -> torch.Tensor:
         """Returns [max_length, text_dim]"""
-        if self.tokenizer is None:
+        if self.tokenizer is None or self.model is None:
             return torch.randn(self.max_length, text_dim)
 
         inputs = self.tokenizer(

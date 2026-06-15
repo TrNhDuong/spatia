@@ -121,13 +121,14 @@ def preprocess_one(
     all_frames = extract_frames(str(video_path), n_total,
                                 cfg.height, cfg.width)
 
-    # 2. Chia thành target / preceding / candidate
+    # 2. Chia thành preceding / target / candidate.
+    # Paper: preceding clip immediately precedes the target clip.
     n_T = cfg.target_frames
     n_P = cfg.preceding_frames
 
-    T_frames = all_frames[:n_T]
-    P_frames = all_frames[n_T: n_T + n_P]
-    C_frames = all_frames[n_T + n_P:]
+    P_frames = all_frames[:n_P]
+    T_frames = all_frames[n_P: n_P + n_T]
+    C_frames = all_frames[n_P + n_T:]
 
     # 3. Retrieve K reference frames từ candidate set
     R_frames = retrieve_reference_frames(T_frames, C_frames, cfg.max_ref_frames)

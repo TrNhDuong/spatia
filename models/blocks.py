@@ -129,6 +129,7 @@ class SpatiaNetworkBlock(nn.Module):
                       use_lora=use_lora, lora_rank=lora_rank)
             for _ in range(num_sub_blocks)
         ])
+        self.controlnet.load_state_dict(self.main_blocks[0].state_dict(), strict=False)
 
     def forward(self, x_tokens: torch.Tensor,
                 scene_tokens: torch.Tensor,

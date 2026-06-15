@@ -17,7 +17,7 @@ class LoRALinear(nn.Module):
     def __init__(self, in_features: int, out_features: int,
                  rank: int = 64, alpha: float = 64.0):
         super().__init__()
-        self.linear = nn.Linear(in_features, out_features, bias=False)
+        self.linear = nn.Linear(in_features, out_features, bias=True)
         self.lora_A = nn.Linear(in_features, rank, bias=False)
         self.lora_B = nn.Linear(rank, out_features, bias=False)
         self.scale = alpha / rank

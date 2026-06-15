@@ -61,6 +61,15 @@ class Spatia(nn.Module):
         Stage 2: swap plain Linears in main blocks for LoRA variants.
         Called after Stage-1 training completes.
         """
+        from .lora import LoRALinear
+
+        def copy_linear_into_lora(dst: nn.Module, src: nn.Module) -> None:
+            if not isinstance(dst, LoRALinear) or not isinstance(src, nn.Linear):
+                return
+            dst.linear.weight.data.copy_(src.weight.data)
+            if src.bias is not None and dst.linear.bias is not None:
+                dst.linear.bias.data.copy_(src.bias.data)
+
         cfg = self.cfg
         for net_block in self.blocks:
             for idx, block in enumerate(net_block.main_blocks):
@@ -69,6 +78,17 @@ class Spatia(nn.Module):
                     use_lora=True, lora_rank=cfg.lora_rank,
                 )
                 new_block.load_state_dict(block.state_dict(), strict=False)
+                for name in ("q", "k", "v", "out"):
+                    copy_linear_into_lora(
+                        getattr(new_block.self_attn, name),
+                        getattr(block.self_attn, name),
+                    )
+                    copy_linear_into_lora(
+                        getattr(new_block.cross_attn, name),
+                        getattr(block.cross_attn, name),
+                    )
+                copy_linear_into_lora(new_block.ffn.fc1, block.ffn.fc1)
+                copy_linear_into_lora(new_block.ffn.fc2, block.ffn.fc2)
                 net_block.main_blocks[idx] = new_block
 
     def freeze_controlnet(self):
