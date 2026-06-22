@@ -1,0 +1,23 @@
+# Core packages used by the converted notebook
+torch
+torchvision
+numpy
+pandas
+opencv-python
+Pillow
+tqdm
+safetensors
+diffusers
+transformers
+accelerate
+peft
+huggingface_hub
+imageio
+scikit-image
+lpips
+hydra-core
+jaxtyping
+trimesh
+ruamel.yaml
+easyDict
+keye-vl-utils

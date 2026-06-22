@@ -313,3 +313,5 @@ During inference, **SAM2** is applied to track and segment dynamic entities. The
 | [113] | Yu et al. *ViewCrafter: Taming Video Diffusion Models for High-Fidelity Novel View Synthesis.* arXiv:2409.02048, 2024. |
 | [115] | Zhang et al. *Adding Conditional Control to Text-to-Image Diffusion Models (ControlNet).* 2023. |
 | [122] | Zhou et al. *Stereo Magnification: Learning View Synthesis Using Multiplane Images.* arXiv:1805.09817, 2018. |
+
+python -c "import torch; print('Torch version:', torch.__version__); print('CUDA available:', torch.cuda.is_available()); print('CUDA version (torch built with):', torch.version.cuda); print('Device count:', torch.cuda.device_count())"
